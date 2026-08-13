@@ -613,7 +613,7 @@ let auth=null, db=null;
 }
 
 /* ================= HELPERS ================= */
-const LS_KEY='godigital_cashflow_v4';
+const LS_KEY='godigital_cashflow_v5';
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const uid=()=>crypto.randomUUID?crypto.randomUUID():'id'+Math.random().toString(36).slice(2)+Date.now();
 const fmt=n=>{const neg=n<0;return (neg?'−Rp ':'Rp ')+Math.round(Math.abs(n)).toLocaleString('id-ID');};
@@ -632,11 +632,17 @@ const DEFAULT_RATE=10000;
 const STATUS_META={open:['DRAFT AKTIF','open'],paid_pic:['DIBAYAR PIC','picpaid'],closed:['LUNAS','closed']};
 const reimbNote=e=>`Gaji ${e.talentName} · ${periodLabel(e.startDate,e.endDate)} · ${e.hours} jam · via ${e.pic}`;
 
-/* ================= STATE ================= */
+/* ================= STATE (RUANG BERSAMA) ================= */
 let state=null, fbUser=null, unsub=null;
 const fbMode=()=>!!fbUser;
 const defaultState=()=>({accounts:[],talents:[],gajiEntries:[],ops:{listrik:550000,internet:380000},transactions:[]});
 const centralAcc=()=>state.accounts.find(a=>a.isCentral);
+const hasData=s=>s&&(((s.transactions||[]).length>0)||((s.accounts||[]).filter(a=>!a.isCentral).length>0)||((s.gajiEntries||[]).length>0));
+function normalize(s){
+  const st=Object.assign(defaultState(),s||{});
+  if(!st.gajiEntries)st.gajiEntries=[];
+  return st;
+}
 function ensureCentral(){
   if(state && !state.accounts.some(a=>a.isCentral)){
     state.accounts.unshift({id:uid(),name:'GoDigital',opening:0,isCentral:true});
@@ -644,58 +650,45 @@ function ensureCentral(){
   }
 }
 
-function seed(){
-  const d=n=>{const t=new Date();t.setDate(t.getDate()-n);return isoOf(t);};
-  const c=uid(),a1=uid(),a2=uid();
-  const tNawra=uid(),tIntan=uid(),tNisa=uid();
-  const pS=d(14),pE=d(1);
-  const eNawra={id:uid(),talentId:tNawra,talentName:'Nawra',startDate:pS,endDate:pE,hours:45,rate:DEFAULT_RATE,amount:450000,pic:'Adit',status:'closed',createdAt:Date.now()-86400000*4,verifiedAt:Date.now()-86400000*3,paidAt:Date.now()-86400000*2};
-  return {
-    accounts:[
-      {id:c,name:'GoDigital',opening:0,isCentral:true},
-      {id:a1,name:'Shopee Live Utama',opening:0},
-      {id:a2,name:'Kas Studio',opening:0}
-    ],
-    talents:[{id:tNawra,name:'Nawra',hourlyRate:DEFAULT_RATE},{id:tIntan,name:'Intan',hourlyRate:DEFAULT_RATE},{id:tNisa,name:'Nisa',hourlyRate:DEFAULT_RATE}],
-    gajiEntries:[
-      eNawra,
-      {id:uid(),talentId:tIntan,talentName:'Intan',startDate:pS,endDate:pE,hours:45,rate:DEFAULT_RATE,amount:450000,pic:'Adit',status:'paid_pic',createdAt:Date.now()-86400000*3,verifiedAt:Date.now()-86400000*2},
-      {id:uid(),talentId:tNisa,talentName:'Nisa',startDate:pS,endDate:pE,hours:45,rate:DEFAULT_RATE,amount:450000,pic:'Adit',status:'open',createdAt:Date.now()-86400000*1}
-    ],
-    ops:{listrik:550000,internet:380000},
-    transactions:[
-      {id:uid(),ts:1,type:'in',cat:'Gift Live',amount:850000,acc:a1,date:d(9),note:'Gift live malam'},
-      {id:uid(),ts:2,type:'in',cat:'Gift Live',amount:1200000,acc:a1,date:d(8),note:'Kampanye live'},
-      {id:uid(),ts:3,type:'out',cat:'Internet',amount:380000,acc:c,date:d(8),note:'Internet studio'},
-      {id:uid(),ts:4,type:'in',cat:'Komisi Host',amount:900000,acc:a1,date:d(7),note:'Sesi live'},
-      {id:uid(),ts:5,type:'out',cat:'Peralatan Studio',amount:250000,acc:c,date:d(7),note:'Ring light'},
-      {id:uid(),ts:6,type:'in',cat:'Gift Live',amount:1450000,acc:a1,date:d(6),note:''},
-      {id:uid(),ts:7,type:'in',cat:'Endorse / Sponsor',amount:750000,acc:a1,date:d(5),note:'Promosi produk'},
-      {id:uid(),ts:8,type:'out',cat:'Listrik',amount:520000,acc:c,date:d(4),note:'Token'},
-      {id:uid(),ts:9,type:'in',cat:'Gift Live',amount:600000,acc:a2,date:d(3),note:''},
-      {id:uid(),ts:10,type:'out',cat:'Kuota / Iklan',amount:300000,acc:c,date:d(3),note:'Boost live'},
-      {id:uid(),ts:11,type:'transfer',amount:3000000,from:a1,to:c,date:d(2),note:'Setoran live'},
-      {id:uid(),ts:12,type:'out',cat:'Gaji Talent',amount:450000,acc:c,date:d(2),note:reimbNote(eNawra)},
-      {id:uid(),ts:13,type:'in',cat:'Gift Live',amount:1100000,acc:a1,date:d(1),note:''},
-      {id:uid(),ts:14,type:'in',cat:'Komisi Host',amount:480000,acc:a1,date:d(1),note:'Affiliate'}
-    ]
-  };
-}
-
 function persist(){
   if(fbMode()){
-    window._fs.setDoc(window._fs.doc(db,'users',fbUser.uid,'data','main'), state)
+    window._fs.setDoc(window._fs.doc(db,'godigital','main','data'), state)
       .catch(e=>toast('Gagal menyimpan: '+e.message,'err'));
   } else localStorage.setItem(LS_KEY,JSON.stringify(state));
 }
-function bindCloud(uidStr){
-  const ref=window._fs.doc(db,'users',uidStr,'data','main');
-  return window._fs.onSnapshot(ref,snap=>{
-    if(snap.exists()) state=Object.assign(defaultState(),snap.data());
-    else { state=defaultState(); window._fs.setDoc(ref,state); }
-    if(!state.gajiEntries)state.gajiEntries=[];
+
+/* Muat data dari ruang bersama; migrasi otomatis dari dokumen pribadi lama jika ada */
+async function initCloud(uidStr){
+  const fs=window._fs;
+  const sharedRef=fs.doc(db,'godigital','main','data');
+  try{
+    const snap=await fs.getDoc(sharedRef);
+    const shared=snap.exists()?snap.data():null;
+    if(hasData(shared)){
+      state=normalize(shared);
+    }else{
+      const pSnap=await fs.getDoc(fs.doc(db,'users',uidStr,'data','main'));
+      const personal=pSnap.exists()?pSnap.data():null;
+      if(hasData(personal)){
+        state=normalize(personal);
+        ensureCentral();
+        await fs.setDoc(sharedRef,state);
+        toast('Data lama dipindahkan ke ruang bersama ✓');
+      }else{
+        state=normalize(shared||defaultState());
+        ensureCentral();
+        await fs.setDoc(sharedRef,state);
+      }
+    }
     ensureCentral();
     renderAll();
+  }catch(err){
+    console.error('[INIT]',err);
+    toast('Gagal memuat data: '+err.message,'err');
+  }
+  if(unsub)unsub();
+  unsub=fs.onSnapshot(sharedRef,s2=>{
+    if(s2.exists()&&s2.data()){state=normalize(s2.data());renderAll();}
   },err=>toast('Sync: '+err.message,'err'));
 }
 
@@ -1121,130 +1114,4 @@ $('#accGrid').addEventListener('click',e=>{
   else if(sweep)sweepAll();
   else if(del){
     const a=accById(del.dataset.delacc);
-    if(a.isCentral)return toast('Akun pusat tidak dapat dihapus','err');
-    const n=state.transactions.filter(t=>t.acc===a.id||t.from===a.id||t.to===a.id).length;
-    openConfirm({title:'Hapus akun "'+a.name+'"?',body:n?n+' transaksi terkait ikut terhapus.':'Akun akan dihapus.',ok:'Hapus',
-      cb:()=>{state.accounts=state.accounts.filter(x=>x.id!==a.id);state.transactions=state.transactions.filter(t=>t.acc!==a.id&&t.from!==a.id&&t.to!==a.id);renderAll();persist();toast('Akun dihapus');}});
-  }
-});
-
-$('#talentForm').addEventListener('submit',e=>{
-  e.preventDefault();
-  const name=$('#tlName').value.trim(),rate=parseInt($('#tlRate').value.replace(/\./g,''),10)||DEFAULT_RATE;
-  if(!name)return toast('Nama wajib diisi','warn');
-  state.talents.push({id:uid(),name,hourlyRate:rate});
-  renderAll();persist();e.target.reset();$('#tlRate').value=DEFAULT_RATE.toLocaleString('id-ID');
-  toast('Talent "'+name+'" ditambahkan ✓');
-});
-$('#talentGrid').addEventListener('click',e=>{
-  const del=e.target.closest('[data-delt]');if(!del)return;
-  const t=talentById(del.dataset.delt);
-  openConfirm({title:'Hapus "'+t.name+'"?',body:'Pengajuan terkait juga akan dihapus.',ok:'Hapus',
-    cb:()=>{state.talents=state.talents.filter(x=>x.id!==t.id);state.gajiEntries=state.gajiEntries.filter(x=>x.talentId!==t.id);renderAll();persist();toast('Talent dihapus');}});
-});
-
-['gjTalent','gjStart','gjEnd','gjHours','gjPic'].forEach(id=>{
-  document.getElementById(id).addEventListener('input',updateGajiPreview);
-  document.getElementById(id).addEventListener('change',updateGajiPreview);
-});
-$('#gajiForm').addEventListener('submit',e=>{
-  e.preventDefault();
-  const t=talentById($('#gjTalent').value);
-  if(!t)return toast('Pilih talent','warn');
-  const s=$('#gjStart').value,ed=$('#gjEnd').value,h=parseFloat($('#gjHours').value)||0,pic=$('#gjPic').value;
-  if(!s||!ed)return toast('Lengkapi periode','warn');
-  if(s>ed)return toast('Periode tidak valid','warn');
-  if(h<=0)return toast('Jam kerja harus diisi','warn');
-  const rate=t.hourlyRate||DEFAULT_RATE,amount=Math.round(h*rate);
-  state.gajiEntries.push({id:uid(),talentId:t.id,talentName:t.name,startDate:s,endDate:ed,hours:h,rate,amount,pic,status:'open',createdAt:Date.now()});
-  renderAll();persist();
-  $('#gjHours').value='';$('#gjPreview').classList.remove('show');
-  toast('Pengajuan '+t.name+' ('+h+' jam · PIC '+pic+') dibuat ✓');
-});
-
-$('#gajiBody').addEventListener('click',e=>{
-  const v=e.target.closest('[data-verify-gj]');
-  const r=e.target.closest('[data-reimb-gj]');
-  const u=e.target.closest('[data-undo-gj]');
-  const d=e.target.closest('[data-del-gj]');
-  const find=x=>state.gajiEntries.find(g=>g.id===x);
-  if(v){const en=find(v.dataset.verifyGj);if(en)verifyEntries([en]);}
-  else if(r){const en=find(r.dataset.reimbGj);if(en)openReimbModal([en]);}
-  else if(u){const en=find(u.dataset.undoGj);if(en)openConfirm({title:'Kembalikan ke Draft?',body:'Status pengajuan kembali menjadi Draft Aktif.',ok:'Kembalikan',okClass:'btn-copper',
-    cb:()=>{en.status='open';delete en.verifiedAt;renderAll();persist();toast('Dikembalikan ke draft');}});}
-  else if(d){const en=find(d.dataset.delGj);if(!en)return;
-    openConfirm({title:'Hapus pengajuan '+en.talentName+'?',body:en.status==='closed'?'Transaksi reimburse terkait juga dihapus.':'Pengajuan dihapus permanen.',ok:'Hapus',
-      cb:()=>{
-        if(en.status==='closed'){const n=reimbNote(en);state.transactions=state.transactions.filter(t=>!(t.type==='out'&&t.cat==='Gaji Talent'&&t.note===n));}
-        state.gajiEntries=state.gajiEntries.filter(x=>x.id!==en.id);
-        renderAll();persist();toast('Pengajuan dihapus');
-      }});}
-});
-
-$('#btnBulkVerify').addEventListener('click',()=>{const o=openEntries();if(o.length)verifyEntries(o);});
-$('#btnBulkReimb').addEventListener('click',()=>{const p=paidPicEntries();if(p.length)openReimbModal(p);});
-
-$$('[data-ops]').forEach(b=>b.addEventListener('click',()=>openOpsModal(b.dataset.ops)));
-$('#opsListrikAmt').addEventListener('change',e=>{const v=parseInt(e.target.value.replace(/\./g,''),10);if(v>0){state.ops.listrik=v;persist();}});
-$('#opsInternetAmt').addEventListener('change',e=>{const v=parseInt(e.target.value.replace(/\./g,''),10);if(v>0){state.ops.internet=v;persist();}});
-$('#btnReset').addEventListener('click',()=>openConfirm({title:'Reset data contoh?',body:'Data saat ini akan diganti data contoh.',ok:'Reset',
-  cb:()=>{state=seed();renderAll();persist();toast('Data contoh dimuat ✓');}}));
-$$('input[data-money]').forEach(inp=>inp.addEventListener('input',()=>{
-  const v=inp.value.replace(/\D/g,'');inp.value=v?parseInt(v,10).toLocaleString('id-ID'):'';
-}));
-
-/* ================= AUTH ================= */
-function authMsg(code){
-  const map={'auth/invalid-credential':'Email atau password salah. Pastikan sudah daftar dulu.','auth/wrong-password':'Password salah.','auth/user-not-found':'Email belum terdaftar — klik "Belum punya akun? Daftar".','auth/email-already-in-use':'Email sudah terdaftar, silakan masuk.','auth/weak-password':'Password minimal 6 karakter.','auth/invalid-email':'Format email tidak valid.','auth/too-many-requests':'Terlalu banyak percobaan, tunggu sebentar.','auth/network-request-failed':'Koneksi internet bermasalah.','auth/operation-not-allowed':'Email/Password Auth belum diaktifkan di Firebase Console!'};
-  return map[code]||('Error: '+code);
-}
-let registerMode=false;
-$('#liToggle').addEventListener('click',()=>{
-  registerMode=!registerMode;$('#liErr').textContent='';
-  $('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';
-  $('#liBtn').className='btn wfull '+(registerMode?'btn-green':'btn-copper');
-  $('#liToggle').textContent=registerMode?'✓ Sudah punya akun? Masuk':'👤 Belum punya akun? Daftar';
-});
-$('#loginForm').addEventListener('submit',async e=>{
-  e.preventDefault();
-  const em=$('#liEmail').value.trim(),pw=$('#liPass').value;
-  $('#liErr').textContent='';$('#liBtn').disabled=true;$('#liBtn').textContent='Memproses…';
-  try{
-    const fa=window._fa;
-    if(registerMode)await fa.createUserWithEmailAndPassword(auth,em,pw);
-    else await fa.signInWithEmailAndPassword(auth,em,pw);
-  }catch(err){
-    console.error('[AUTH]',err.code);
-    $('#liErr').textContent=authMsg(err.code);
-    if(err.code==='auth/user-not-found'&&!registerMode){registerMode=true;$('#liBtn').textContent='🚀 Daftar Akun Baru';$('#liBtn').className='btn wfull btn-green';$('#liToggle').textContent='✓ Sudah punya akun? Masuk';$('#liErr').textContent+=' — mode daftar otomatis aktif, klik lagi.';}
-  }finally{
-    $('#liBtn').disabled=false;
-    $('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';
-  }
-});
-$('#btnLogout').addEventListener('click',()=>window._fa.signOut(auth));
-
-/* ================= INIT ================= */
-function setDefaultDates(){
-  const today=new Date();
-  const d1=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?1:16);
-  const d2=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?15:new Date(today.getFullYear(),today.getMonth()+1,0).getDate());
-  $('#gjStart').value=isoOf(d1);$('#gjEnd').value=isoOf(d2);$('#txDate').value=todayISO();
-}
-window._fa.onAuthStateChanged(auth,u=>{
-  if(u){
-    fbUser=u;
-    $('#loginScreen').hidden=true;$('#appShell').hidden=false;
-    $('#userEmail').textContent=u.email;$('#userBox').hidden=false;$('#btnReset').hidden=true;
-    if(unsub)unsub();unsub=bindCloud(u.uid);
-  }else{
-    fbUser=null;state=null;if(unsub){unsub();unsub=null;}
-    $('#appShell').hidden=true;$('#loginScreen').hidden=false;
-  }
-});
-setDefaultDates();
-$('#footDate').textContent='© 2026 Go Digital';
-setTxType('in');
-</script>
-</body>
-</html>
+    if(a.isCentral)return toast('Akun pusat tidak dapat dihapus
