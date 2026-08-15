@@ -214,14 +214,6 @@ tbody tr:last-child td{border-bottom:none}
 </style>
 </head>
 <body>
-  <script>
-window.addEventListener('error',function(e){
-  var d=document.createElement('pre');
-  d.style.cssText='position:fixed;top:0;left:0;right:0;background:#ffe5e5;color:#900;padding:12px;z-index:99999;white-space:pre-wrap;font-size:12px;border-bottom:2px solid #900';
-  d.textContent='ERROR: '+e.message+' (baris '+e.lineno+')';
-  document.body.appendChild(d);
-},true);
-</script>
 <div class="bg-fx"><div class="grid"></div><div class="glow g1"></div><div class="glow g2"></div></div>
 
 <div class="login-wrap" id="loginScreen" hidden>
@@ -436,8 +428,17 @@ const defaultState=()=>({accounts:[],talents:[],gajiEntries:[],ops:{listrik:5500
 const centralAcc=()=>state.accounts.find(a=>a.isCentral);
 const hasData=s=>s&&(((s.transactions||[]).length>0)||((s.accounts||[]).filter(a=>!a.isCentral).length>0)||((s.gajiEntries||[]).length>0));
 function normalize(s){const st=Object.assign(defaultState(),s||{});if(!st.gajiEntries)st.gajiEntries=[];return st;}
-function ensureCentral(){if(state&&!state.accounts.some(a=>a.isCentral)){state.accounts.unshift({id:uid(),name:'GoDigital',opening:0,isCentral:true});persist();}}
-function persist(){if(fbMode()){window._fs.setDoc(window._fs.doc(db,'godigital','main','data'), state).catch(e=>toast('Gagal menyimpan: '+e.message,'err'));}}
+function ensureCentral(){
+  if(state&&!state.accounts.some(a=>a.isCentral)){
+    state.accounts.unshift({id:uid(),name:'GoDigital',opening:0,isCentral:true});
+    persist();
+  }
+}
+function persist(){
+  if(fbMode()){
+    window._fs.setDoc(window._fs.doc(db,'godigital','main','data'), state).catch(e=>toast('Gagal menyimpan: '+e.message,'err'));
+  }
+}
 async function initCloud(uidStr){
   const fs=window._fs;
   const sharedRef=fs.doc(db,'godigital','main','data');
@@ -453,15 +454,26 @@ async function initCloud(uidStr){
       ensureCentral();
       await fs.setDoc(sharedRef,state);
     }
-    ensureCentral();renderAll();
+    ensureCentral();
+    renderAll();
   }catch(err){console.error('[INIT]',err);toast('Gagal memuat data: '+err.message,'err');}
   if(unsub)unsub();
-  unsub=fs.onSnapshot(sharedRef,s2=>{if(s2.exists()&&s2.data()){state=normalize(s2.data());renderAll();}},err=>toast('Sync: '+err.message,'err'));
+  unsub=fs.onSnapshot(sharedRef,s2=>{
+    if(s2.exists()&&s2.data()){state=normalize(s2.data());renderAll();}
+  },err=>toast('Sync: '+err.message,'err'));
 }
 
 const accById=id=>state.accounts.find(a=>a.id===id);
 const talentById=id=>state.talents.find(t=>t.id===id);
-function balanceOf(id){const a=accById(id);let bal=a?(a.opening||0):0;for(const t of state.transactions){if(t.type==='in'&&t.acc===id)bal+=t.amount;else if(t.type==='out'&&t.acc===id)bal-=t.amount;else if(t.type==='transfer'){if(t.from===id)bal-=t.amount;if(t.to===id)bal+=t.amount;}}return bal;}
+function balanceOf(id){
+  const a=accById(id);let bal=a?(a.opening||0):0;
+  for(const t of state.transactions){
+    if(t.type==='in'&&t.acc===id)bal+=t.amount;
+    else if(t.type==='out'&&t.acc===id)bal-=t.amount;
+    else if(t.type==='transfer'){if(t.from===id)bal-=t.amount;if(t.to===id)bal+=t.amount;}
+  }
+  return bal;
+}
 const totalKas=()=>state.accounts.reduce((s,a)=>s+balanceOf(a.id),0);
 function addTx(t){t.id=uid();t.ts=Date.now();t.date=t.date||todayISO();state.transactions.push(t);renderAll();persist();}
 function addTransfer(from,to,amount,note){state.transactions.push({id:uid(),ts:Date.now(),type:'transfer',amount,from,to,date:todayISO(),note});renderAll();persist();}
@@ -470,7 +482,12 @@ const paidPicEntries=()=>state.gajiEntries.filter(e=>e.status==='paid_pic');
 const sumOpen=()=>openEntries().reduce((s,e)=>s+e.amount,0);
 const sumHutang=()=>paidPicEntries().reduce((s,e)=>s+e.amount,0);
 let ui={filter:'all',txType:'in',opsCat:'Listrik',gajiFilter:'all',transferFrom:null};
-function animateNumber(el,to){const from=(typeof el._v==='number')?el._v:0;el._v=to;if(from===to){el.textContent=fmt(to);return;}const t0=performance.now(),dur=650;(function step(t){const p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3);el.textContent=fmt(from+(to-from)*e);if(p<1)requestAnimationFrame(step);else el.textContent=fmt(to);})(t0);}
+function animateNumber(el,to){
+  const from=(typeof el._v==='number')?el._v:0;el._v=to;
+  if(from===to){el.textContent=fmt(to);return;}
+  const t0=performance.now(),dur=650;
+  (function step(t){const p=Math.min(1,(t-t0)/dur),e=1-Math.pow(1-p,3);el.textContent=fmt(from+(to-from)*e);if(p<1)requestAnimationFrame(step);else el.textContent=fmt(to);})(t0);
+}
 function renderAll(){if(!state)return;renderTop();renderDashboard();renderTx();renderAccounts();renderGaji();renderOps();}
 function renderTop(){const k=totalKas();animateNumber($('#tbKas'),k);animateNumber($('#sideKas'),k);}
 function renderDashboard(){
@@ -492,83 +509,412 @@ function renderDashboard(){
   renderChart();renderCatBars();renderRecent();
 }
 function renderChart(){
-  const wrap=$('#chartBars');wrap.innerHTML='';const days=[];for(let i=13;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(d);}let max=1;
-  const data=days.map(d=>{const k=isoOf(d);const ins=state.transactions.filter(t=>t.date===k&&t.type==='in').reduce((s,t)=>s+t.amount,0);const outs=state.transactions.filter(t=>t.date===k&&t.type==='out').reduce((s,t)=>s+t.amount,0);max=Math.max(max,ins,outs);return{d,k,ins,outs};});
-  data.forEach(({d,k,ins,outs})=>{const col=document.createElement('div');col.className='bar-col';col.title=dateLabel(k)+'\nMasuk: '+fmt(ins)+'\nKeluar: '+fmt(outs);col.innerHTML=`<div class="pair"><i class="b-in" data-h="${Math.max(ins/max*100,ins>0?5:2)}%"></i><i class="b-out" data-h="${Math.max(outs/max*100,outs>0?5:2)}%"></i></div><span>${d.getDate()}</span>`;wrap.appendChild(col);});
-  wrap.querySelectorAll('i').forEach(el=>el.style.height='2%');requestAnimationFrame(()=>requestAnimationFrame(()=>{wrap.querySelectorAll('i').forEach(el=>el.style.height=el.dataset.h);}));
+  const wrap=$('#chartBars');wrap.innerHTML='';const days=[];
+  for(let i=13;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days.push(d);}
+  let max=1;
+  const data=days.map(d=>{
+    const k=isoOf(d);
+    const ins=state.transactions.filter(t=>t.date===k&&t.type==='in').reduce((s,t)=>s+t.amount,0);
+    const outs=state.transactions.filter(t=>t.date===k&&t.type==='out').reduce((s,t)=>s+t.amount,0);
+    max=Math.max(max,ins,outs);return{d,k,ins,outs};
+  });
+  data.forEach(({d,k,ins,outs})=>{
+    const col=document.createElement('div');col.className='bar-col';
+    col.title=dateLabel(k)+'\nMasuk: '+fmt(ins)+'\nKeluar: '+fmt(outs);
+    col.innerHTML=`<div class="pair"><i class="b-in" data-h="${Math.max(ins/max*100,ins>0?5:2)}%"></i><i class="b-out" data-h="${Math.max(outs/max*100,outs>0?5:2)}%"></i></div><span>${d.getDate()}</span>`;
+    wrap.appendChild(col);
+  });
+  wrap.querySelectorAll('i').forEach(el=>el.style.height='2%');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{wrap.querySelectorAll('i').forEach(el=>el.style.height=el.dataset.h);}));
 }
-function renderCatBars(){const ym=todayISO().slice(0,7),box=$('#catBars'),map={};state.transactions.filter(t=>t.type==='out'&&t.date.startsWith(ym)).forEach(t=>map[t.cat]=(map[t.cat]||0)+t.amount);const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);if(!rows.length){box.innerHTML='<div class="empty">Belum ada pengeluaran bulan ini.</div>';return;}const max=rows[0][1];box.innerHTML=rows.map(([c,v])=>`<div class="cat-row"><span class="cat-name"><i style="background:${CAT_COLOR[c]||'#8A97A3'}"></i>${esc(c)}</span><span class="cat-bar"><i style="width:0;background:${CAT_COLOR[c]||'#8A97A3'}" data-w="${v/max*100}"></i></span><b class="mono">${fmt(v)}</b></div>`).join('');requestAnimationFrame(()=>requestAnimationFrame(()=>{box.querySelectorAll('.cat-bar i').forEach(el=>el.style.width=el.dataset.w+'%');}));}
-function txRowInfo(t){if(t.type==='transfer')return {c:CAT_COLOR['Transfer Internal'],cat:'Transfer Internal',accName:(accById(t.from)?.name||'—')+' → '+(accById(t.to)?.name||'—'),amt:'⇄ '+fmt(t.amount),cls:'amt-tr'};const c=CAT_COLOR[t.cat]||'#8A97A3';return {c,cat:t.cat,accName:accById(t.acc)?.name||'—',amt:(t.type==='in'?'+':'−')+fmt(t.amount),cls:t.type==='in'?'amt-in':'amt-out'};}
-function renderRecent(){const sorted=[...state.transactions].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)).slice(0,6);$('#recentList').innerHTML=sorted.map(t=>{const i=txRowInfo(t);return `<div class="row"><span class="row-dot" style="background:${i.c}"></span><div class="row-main"><b>${esc(t.note||i.cat)}</b><span>${esc(i.accName)} · ${dateLabel(t.date)}</span></div><span class="pill" style="color:${i.c};background:${i.c}14;border-color:${i.c}40">${esc(i.cat)}</span><b class="mono ${i.cls}">${i.amt}</b></div>`;}).join('')||'<div class="empty">Belum ada transaksi.</div>';}
-function accOptions(selId){const sel=document.getElementById(selId);if(!sel)return;const cur=sel.value;sel.innerHTML=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}${a.isCentral?' · PUSAT':''}</option>`).join('')+`<option value="__new">＋ Tambah akun baru…</option>`;if([...sel.options].some(o=>o.value===cur))sel.value=cur;}
+function renderCatBars(){
+  const ym=todayISO().slice(0,7),box=$('#catBars'),map={};
+  state.transactions.filter(t=>t.type==='out'&&t.date.startsWith(ym)).forEach(t=>map[t.cat]=(map[t.cat]||0)+t.amount);
+  const rows=Object.entries(map).sort((a,b)=>b[1]-a[1]);
+  if(!rows.length){box.innerHTML='<div class="empty">Belum ada pengeluaran bulan ini.</div>';return;}
+  const max=rows[0][1];
+  box.innerHTML=rows.map(([c,v])=>`<div class="cat-row"><span class="cat-name"><i style="background:${CAT_COLOR[c]||'#8A97A3'}"></i>${esc(c)}</span><span class="cat-bar"><i style="width:0;background:${CAT_COLOR[c]||'#8A97A3'}" data-w="${v/max*100}"></i></span><b class="mono">${fmt(v)}</b></div>`).join('');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{box.querySelectorAll('.cat-bar i').forEach(el=>el.style.width=el.dataset.w+'%');}));
+}
+function txRowInfo(t){
+  if(t.type==='transfer')return {c:CAT_COLOR['Transfer Internal'],cat:'Transfer Internal',accName:(accById(t.from)?.name||'—')+' → '+(accById(t.to)?.name||'—'),amt:'⇄ '+fmt(t.amount),cls:'amt-tr'};
+  const c=CAT_COLOR[t.cat]||'#8A97A3';
+  return {c,cat:t.cat,accName:accById(t.acc)?.name||'—',amt:(t.type==='in'?'+':'−')+fmt(t.amount),cls:t.type==='in'?'amt-in':'amt-out'};
+}
+function renderRecent(){
+  const sorted=[...state.transactions].sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0)).slice(0,6);
+  $('#recentList').innerHTML=sorted.map(t=>{const i=txRowInfo(t);return `<div class="row"><span class="row-dot" style="background:${i.c}"></span><div class="row-main"><b>${esc(t.note||i.cat)}</b><span>${esc(i.accName)} · ${dateLabel(t.date)}</span></div><span class="pill" style="color:${i.c};background:${i.c}14;border-color:${i.c}40">${esc(i.cat)}</span><b class="mono ${i.cls}">${i.amt}</b></div>`;}).join('')||'<div class="empty">Belum ada transaksi.</div>';
+}
+function accOptions(selId){
+  const sel=document.getElementById(selId);if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML=state.accounts.map(a=>`<option value="${a.id}">${esc(a.name)}${a.isCentral?' · PUSAT':''}</option>`).join('')+`<option value="__new">＋ Tambah akun baru…</option>`;
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+}
 function accOptionsPay(selId){accOptions(selId);const c=centralAcc();if(c)document.getElementById(selId).value=c.id;}
-function talentOptions(selId){const sel=document.getElementById(selId);if(!sel)return;const cur=sel.value;sel.innerHTML=state.talents.map(t=>`<option value="${t.id}">${esc(t.name)} · ${fmt(t.hourlyRate)}/jam</option>`).join('');if([...sel.options].some(o=>o.value===cur))sel.value=cur;updateGajiPreview();}
-function setTxType(t){ui.txType=t;$('#segIn').className=t==='in'?'on-in':'';$('#segOut').className=t==='out'?'on-out':'';$('#txCat').innerHTML=(t==='in'?IN_CATS:OUT_CATS).map(c=>`<option>${c}</option>`).join('');const b=$('#txSubmit');b.className='btn wfull '+(t==='in'?'btn-green':'btn-coral');b.textContent=t==='in'?'↓ Simpan Pemasukan':'↑ Simpan Pengeluaran';}
+function talentOptions(selId){
+  const sel=document.getElementById(selId);if(!sel)return;
+  const cur=sel.value;
+  sel.innerHTML=state.talents.map(t=>`<option value="${t.id}">${esc(t.name)} · ${fmt(t.hourlyRate)}/jam</option>`).join('');
+  if([...sel.options].some(o=>o.value===cur))sel.value=cur;
+  updateGajiPreview();
+}
+function setTxType(t){
+  ui.txType=t;
+  $('#segIn').className=t==='in'?'on-in':'';$('#segOut').className=t==='out'?'on-out':'';
+  $('#txCat').innerHTML=(t==='in'?IN_CATS:OUT_CATS).map(c=>`<option>${c}</option>`).join('');
+  const b=$('#txSubmit');
+  b.className='btn wfull '+(t==='in'?'btn-green':'btn-coral');
+  b.textContent=t==='in'?'↓ Simpan Pemasukan':'↑ Simpan Pengeluaran';
+}
 function renderTx(){accOptions('txAccount');renderTxTable();}
-function renderTxTable(){const rows=[...state.transactions].filter(t=>ui.filter==='all'||t.type===ui.filter).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));const tb=$('#txBody');if(!rows.length){tb.innerHTML='<tr><td colspan="6"><div class="empty">Belum ada transaksi.</div></td></tr>';return;}tb.innerHTML=rows.map(t=>{const i=txRowInfo(t);return `<tr><td class="mono muted" style="white-space:nowrap">${dateLabel(t.date)}</td><td><span class="pill" style="color:${i.c};background:${i.c}14;border-color:${i.c}40">${esc(i.cat)}</span></td><td>${esc(i.accName)}</td><td class="muted">${esc(t.note||'—')}</td><td class="mono right ${i.cls}" style="white-space:nowrap"><b>${i.amt}</b></td><td class="right"><button class="icon-btn" data-del="${t.id}" title="Hapus">${TRASH}</button></td></tr>`;}).join('');}
-function renderAccounts(){$('#accCount').textContent=state.accounts.length+' akun';$('#accGrid').innerHTML=state.accounts.map(a=>{const bal=balanceOf(a.id),n=state.transactions.filter(t=>t.acc===a.id||t.from===a.id||t.to===a.id).length;if(a.isCentral)return `<div class="acc-card central"><div class="acc-top"><span class="pf pf-central">G</span><div class="acc-name"><b>${esc(a.name)}</b><span class="sp-central">AKUN PUSAT</span></div></div><div class="acc-bal ${bal<0?'amt-out':''}">${fmt(bal)}</div><div class="acc-meta">${n} transaksi · tempat semua setoran & pembayaran</div><div class="acc-actions"><button class="btn btn-copper btn-sm" data-sweep="1">⬇ Tarik Semua Saldo Akun</button></div></div>`;return `<div class="acc-card"><div class="acc-top"><span class="pf">S</span><div class="acc-name"><b>${esc(a.name)}</b><span>SHOPEE LIVE</span></div><button class="icon-btn" data-delacc="${a.id}" title="Hapus">${TRASH}</button></div><div class="acc-bal ${bal<0?'amt-out':''}">${fmt(bal)}</div><div class="acc-meta">${n} transaksi · awal ${fmt(a.opening||0)}</div><div class="acc-actions"><button class="btn btn-ghostcopper btn-sm" data-setor="${a.id}">⇄ Setor ke GoDigital</button></div></div>`;}).join('')||'<div class="empty">Belum ada akun.</div>';accOptions('txAccount');}
-function renderGaji(){talentOptions('gjTalent');$('#talentGrid').innerHTML=state.talents.map(t=>`<div class="talent-card"><span class="pf" style="background:linear-gradient(135deg,var(--copper-l),var(--copper-d))">${(t.name[0]||'?').toUpperCase()}</span><div style="flex:1;min-width:0"><b>${esc(t.name)}</b><span>${fmt(t.hourlyRate)}/jam</span></div><button class="icon-btn" data-delt="${t.id}" title="Hapus">${TRASH}</button></div>`).join('')||'<div class="empty">Belum ada talent.</div>';renderGajiTable();renderGajiSummary();}
-function renderGajiTable(){const f=ui.gajiFilter;const rows=[...state.gajiEntries].filter(e=>f==='all'||e.status===f).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));$('#gjPeriodLabel').textContent=rows.length+' pengajuan';const tb=$('#gajiBody');if(!rows.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">Belum ada pengajuan.</div></td></tr>';return;}tb.innerHTML=rows.map(e=>{const[lbl,cls]=STATUS_META[e.status]||STATUS_META.open;let act='';if(e.status==='open')act+=`<button class="btn btn-green btn-sm" data-verify-gj="${e.id}">✓ Verifikasi</button>`;if(e.status==='paid_pic')act+=`<button class="btn btn-copper btn-sm" data-reimb-gj="${e.id}">💸 Bayar</button><button class="icon-btn" data-undo-gj="${e.id}" title="Kembalikan ke draft"><svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></button>`;act+=`<button class="icon-btn" data-del-gj="${e.id}" title="Hapus">${TRASH}</button>`;return `<tr><td class="muted mono" style="white-space:nowrap;font-size:11.5px">${periodLabel(e.startDate,e.endDate)}</td><td><b>${esc(e.talentName)}</b></td><td class="mono">${e.hours} jam</td><td><span class="badge pic">${esc(e.pic)}</span></td><td class="mono right"><b>${fmt(e.amount)}</b></td><td><span class="badge ${cls}">${lbl}</span></td><td class="right" style="white-space:nowrap">${act}</td></tr>`;}).join('');}
-function renderGajiSummary(){const kas=totalKas(),openT=sumOpen(),hutang=sumHutang();$('#sOpen').textContent=fmt(openT);$('#sHutang').textContent=fmt(hutang);$('#sKas').textContent=fmt(kas);$('#sHutangWrap').classList.toggle('hot',hutang>0);$('#btnBulkVerify').disabled=!openEntries().length;$('#btnBulkReimb').disabled=!paidPicEntries().length;}
-function updateGajiPreview(){const t=talentById($('#gjTalent').value);const s=$('#gjStart').value,e=$('#gjEnd').value,h=parseFloat($('#gjHours').value)||0;const box=$('#gjPreview');if(!t||!s||!e||h<=0){box.classList.remove('show');return;}const rate=t.hourlyRate||DEFAULT_RATE;$('#pName').textContent=t.name;$('#pPeriod').textContent=periodLabel(s,e);$('#pHours').textContent=h+' jam';$('#pRate').textContent=fmt(rate)+'/jam';$('#pPic').textContent=$('#gjPic').value;$('#pTotal').textContent=fmt(Math.round(h*rate));box.classList.add('show');}
-function renderOps(){$('#opsListrikAmt').value=(state.ops.listrik||0).toLocaleString('id-ID');$('#opsInternetAmt').value=(state.ops.internet||0).toLocaleString('id-ID');[['badgeListrik','Listrik'],['badgeInternet','Internet']].forEach(([id,cat])=>{const el=document.getElementById(id),ym=todayISO().slice(0,7);const p=state.transactions.some(t=>t.type==='out'&&t.cat===cat&&t.date.startsWith(ym));el.textContent=p?'✓ Lunas':'● Belum';el.className='ops-badge '+(p?'ok':'wait');});}
+function renderTxTable(){
+  const rows=[...state.transactions].filter(t=>ui.filter==='all'||t.type===ui.filter).sort((a,b)=>b.date.localeCompare(a.date)||(b.ts||0)-(a.ts||0));
+  const tb=$('#txBody');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="6"><div class="empty">Belum ada transaksi.</div></td></tr>';return;}
+  tb.innerHTML=rows.map(t=>{const i=txRowInfo(t);return `<tr><td class="mono muted" style="white-space:nowrap">${dateLabel(t.date)}</td><td><span class="pill" style="color:${i.c};background:${i.c}14;border-color:${i.c}40">${esc(i.cat)}</span></td><td>${esc(i.accName)}</td><td class="muted">${esc(t.note||'—')}</td><td class="mono right ${i.cls}" style="white-space:nowrap"><b>${i.amt}</b></td><td class="right"><button class="icon-btn" data-del="${t.id}" title="Hapus">${TRASH}</button></td></tr>`;}).join('');
+}
+function renderAccounts(){
+  $('#accCount').textContent=state.accounts.length+' akun';
+  $('#accGrid').innerHTML=state.accounts.map(a=>{
+    const bal=balanceOf(a.id),n=state.transactions.filter(t=>t.acc===a.id||t.from===a.id||t.to===a.id).length;
+    if(a.isCentral)return `<div class="acc-card central"><div class="acc-top"><span class="pf pf-central">G</span><div class="acc-name"><b>${esc(a.name)}</b><span class="sp-central">AKUN PUSAT</span></div></div><div class="acc-bal ${bal<0?'amt-out':''}">${fmt(bal)}</div><div class="acc-meta">${n} transaksi · tempat semua setoran & pembayaran</div><div class="acc-actions"><button class="btn btn-copper btn-sm" data-sweep="1">⬇ Tarik Semua Saldo Akun</button></div></div>`;
+    return `<div class="acc-card"><div class="acc-top"><span class="pf">S</span><div class="acc-name"><b>${esc(a.name)}</b><span>SHOPEE LIVE</span></div><button class="icon-btn" data-delacc="${a.id}" title="Hapus">${TRASH}</button></div><div class="acc-bal ${bal<0?'amt-out':''}">${fmt(bal)}</div><div class="acc-meta">${n} transaksi · awal ${fmt(a.opening||0)}</div><div class="acc-actions"><button class="btn btn-ghostcopper btn-sm" data-setor="${a.id}">⇄ Setor ke GoDigital</button></div></div>`;
+  }).join('')||'<div class="empty">Belum ada akun.</div>';
+  accOptions('txAccount');
+}
+function renderGaji(){
+  talentOptions('gjTalent');
+  $('#talentGrid').innerHTML=state.talents.map(t=>`<div class="talent-card"><span class="pf" style="background:linear-gradient(135deg,var(--copper-l),var(--copper-d))">${(t.name[0]||'?').toUpperCase()}</span><div style="flex:1;min-width:0"><b>${esc(t.name)}</b><span>${fmt(t.hourlyRate)}/jam</span></div><button class="icon-btn" data-delt="${t.id}" title="Hapus">${TRASH}</button></div>`).join('')||'<div class="empty">Belum ada talent.</div>';
+  renderGajiTable();renderGajiSummary();
+}
+function renderGajiTable(){
+  const f=ui.gajiFilter;
+  const rows=[...state.gajiEntries].filter(e=>f==='all'||e.status===f).sort((a,b)=>(b.createdAt||0)-(a.createdAt||0));
+  $('#gjPeriodLabel').textContent=rows.length+' pengajuan';
+  const tb=$('#gajiBody');
+  if(!rows.length){tb.innerHTML='<tr><td colspan="7"><div class="empty">Belum ada pengajuan.</div></td></tr>';return;}
+  tb.innerHTML=rows.map(e=>{
+    const [lbl,cls]=STATUS_META[e.status]||STATUS_META.open;
+    let act='';
+    if(e.status==='open')act+=`<button class="btn btn-green btn-sm" data-verify-gj="${e.id}">✓ Verifikasi</button>`;
+    if(e.status==='paid_pic')act+=`<button class="btn btn-copper btn-sm" data-reimb-gj="${e.id}">💸 Bayar</button><button class="icon-btn" data-undo-gj="${e.id}" title="Kembalikan ke draft"><svg class="ic" viewBox="0 0 24 24" style="width:15px;height:15px"><path d="M3 12a9 9 0 1 0 3-6.7M3 4v5h5"/></svg></button>`;
+    act+=`<button class="icon-btn" data-del-gj="${e.id}" title="Hapus">${TRASH}</button>`;
+    return `<tr><td class="muted mono" style="white-space:nowrap;font-size:11.5px">${periodLabel(e.startDate,e.endDate)}</td><td><b>${esc(e.talentName)}</b></td><td class="mono">${e.hours} jam</td><td><span class="badge pic">${esc(e.pic)}</span></td><td class="mono right"><b>${fmt(e.amount)}</b></td><td><span class="badge ${cls}">${lbl}</span></td><td class="right" style="white-space:nowrap">${act}</td></tr>`;
+  }).join('');
+}
+function renderGajiSummary(){
+  const kas=totalKas(),openT=sumOpen(),hutang=sumHutang();
+  $('#sOpen').textContent=fmt(openT);
+  $('#sHutang').textContent=fmt(hutang);
+  $('#sKas').textContent=fmt(kas);
+  $('#sHutangWrap').classList.toggle('hot',hutang>0);
+  $('#btnBulkVerify').disabled=!openEntries().length;
+  $('#btnBulkReimb').disabled=!paidPicEntries().length;
+}
+function updateGajiPreview(){
+  const t=talentById($('#gjTalent').value);
+  const s=$('#gjStart').value,e=$('#gjEnd').value,h=parseFloat($('#gjHours').value)||0;
+  const box=$('#gjPreview');
+  if(!t||!s||!e||h<=0){box.classList.remove('show');return;}
+  const rate=t.hourlyRate||DEFAULT_RATE;
+  $('#pName').textContent=t.name;
+  $('#pPeriod').textContent=periodLabel(s,e);
+  $('#pHours').textContent=h+' jam';
+  $('#pRate').textContent=fmt(rate)+'/jam';
+  $('#pPic').textContent=$('#gjPic').value;
+  $('#pTotal').textContent=fmt(Math.round(h*rate));
+  box.classList.add('show');
+}
+function renderOps(){
+  $('#opsListrikAmt').value=(state.ops.listrik||0).toLocaleString('id-ID');
+  $('#opsInternetAmt').value=(state.ops.internet||0).toLocaleString('id-ID');
+  [['badgeListrik','Listrik'],['badgeInternet','Internet']].forEach(([id,cat])=>{
+    const el=document.getElementById(id),ym=todayISO().slice(0,7);
+    const p=state.transactions.some(t=>t.type==='out'&&t.cat===cat&&t.date.startsWith(ym));
+    el.textContent=p?'✓ Lunas':'● Belum';el.className='ops-badge '+(p?'ok':'wait');
+  });
+}
 function openModal(id){$('#overlay').classList.add('open');document.getElementById(id).classList.add('open');}
 function closeModal(){$('#overlay').classList.remove('open');$$('.modal.open').forEach(m=>m.classList.remove('open'));}
 $('#overlay').addEventListener('click',e=>{if(e.target.id==='overlay')closeModal();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal();});
 $$('[data-close]').forEach(b=>b.addEventListener('click',closeModal));
-function toast(msg,kind='ok'){const t=document.createElement('div');t.className='toast t-'+kind;t.textContent=msg;$('#toasts').appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),320);},3000);}
+function toast(msg,kind='ok'){
+  const t=document.createElement('div');t.className='toast t-'+kind;t.textContent=msg;
+  $('#toasts').appendChild(t);requestAnimationFrame(()=>t.classList.add('show'));
+  setTimeout(()=>{t.classList.remove('show');setTimeout(()=>t.remove(),320);},3000);
+}
 let confirmCb=null;
-function openConfirm(o){$('#cfTitle').textContent=o.title;$('#cfBody').textContent=o.body;$('#cfOk').textContent=o.ok||'Konfirmasi';$('#cfOk').className='btn '+(o.okClass||'btn-coral');confirmCb=o.cb;openModal('modal-confirm');}
+function openConfirm(o){
+  $('#cfTitle').textContent=o.title;$('#cfBody').textContent=o.body;
+  $('#cfOk').textContent=o.ok||'Konfirmasi';
+  $('#cfOk').className='btn '+(o.okClass||'btn-coral');
+  confirmCb=o.cb;openModal('modal-confirm');
+}
 $('#cfOk').addEventListener('click',()=>{if(confirmCb)confirmCb();confirmCb=null;closeModal();});
 let accCb=null;
 function openAccModal(cb){accCb=cb;$('#amName').value='';$('#amOpening').value='';openModal('modal-acc');}
-$('#amForm').addEventListener('submit',e=>{e.preventDefault();const name=$('#amName').value.trim();if(!name)return toast('Nama akun wajib diisi','warn');const acc={id:uid(),name,opening:parseInt($('#amOpening').value.replace(/\./g,''),10)||0};state.accounts.push(acc);renderAll();persist();closeModal();toast('Akun ditambahkan ✓');if(accCb)accCb(acc.id);accCb=null;});
-function openTransferModal(fromId){const from=accById(fromId),c=centralAcc();if(!from||!c)return;const bal=balanceOf(fromId);if(bal<=0)return toast('Saldo akun ini Rp 0 — tidak ada yang disetor','warn');ui.transferFrom=fromId;$('#tfSub').textContent=`Pindah saldo dari ${from.name} ke ${c.name}. Tidak dihitung sebagai pemasukan/pengeluaran.`;$('#tfAmount').value=bal.toLocaleString('id-ID');openModal('modal-transfer');}
-$('#tfOk').addEventListener('click',()=>{const from=ui.transferFrom,c=centralAcc();const amount=parseInt($('#tfAmount').value.replace(/\./g,''),10)||0;const bal=balanceOf(from);if(amount<=0)return toast('Jumlah tidak valid','warn');if(amount>bal)return toast('Melebihi saldo ('+fmt(bal)+')','warn');addTransfer(from,c.id,amount,'Setoran '+accById(from).name);closeModal();toast('Setoran '+fmt(amount)+' masuk ke GoDigital ✓');});
-function sweepAll(){const c=centralAcc();if(!c)return;let count=0;state.accounts.filter(a=>!a.isCentral).forEach(a=>{const bal=balanceOf(a.id);if(bal>0){state.transactions.push({id:uid(),ts:Date.now(),type:'transfer',amount:bal,from:a.id,to:c.id,date:todayISO(),note:'Setoran saldo '+a.name});count++;}});if(count){renderAll();persist();toast(count+' akun disetor ke GoDigital ✓');}else toast('Tidak ada saldo akun untuk disetor','warn');}
-function verifyEntries(entries){const pics=[...new Set(entries.map(e=>e.pic))].join(' & ');const total=entries.reduce((s,e)=>s+e.amount,0);openConfirm({title:'Verifikasi Pengajuan',body:`Konfirmasi bahwa PIC (${pics}) sudah membayarkan ${fmt(total)} ke talent. Jumlah ini tercatat sebagai hutang perusahaan ke PIC.`,ok:'✓ Verifikasi',okClass:'btn-green',cb:()=>{entries.forEach(e=>{e.status='paid_pic';e.verifiedAt=Date.now();});renderAll();persist();toast('Diverifikasi — hutang ke '+pics+' tercatat');}});}
+$('#amForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const name=$('#amName').value.trim();if(!name)return toast('Nama akun wajib diisi','warn');
+  const acc={id:uid(),name,opening:parseInt($('#amOpening').value.replace(/\./g,''),10)||0};
+  state.accounts.push(acc);renderAll();persist();closeModal();toast('Akun ditambahkan ✓');
+  if(accCb)accCb(acc.id);accCb=null;
+});
+function openTransferModal(fromId){
+  const from=accById(fromId),c=centralAcc();
+  if(!from||!c)return;
+  const bal=balanceOf(fromId);
+  if(bal<=0)return toast('Saldo akun ini Rp 0 — tidak ada yang disetor','warn');
+  ui.transferFrom=fromId;
+  $('#tfSub').textContent=`Pindah saldo dari ${from.name} ke ${c.name}. Tidak dihitung sebagai pemasukan/pengeluaran.`;
+  $('#tfAmount').value=bal.toLocaleString('id-ID');
+  openModal('modal-transfer');
+}
+$('#tfOk').addEventListener('click',()=>{
+  const from=ui.transferFrom,c=centralAcc();
+  const amount=parseInt($('#tfAmount').value.replace(/\./g,''),10)||0;
+  const bal=balanceOf(from);
+  if(amount<=0)return toast('Jumlah tidak valid','warn');
+  if(amount>bal)return toast('Melebihi saldo ('+fmt(bal)+')','warn');
+  addTransfer(from,c.id,amount,'Setoran '+accById(from).name);
+  closeModal();toast('Setoran '+fmt(amount)+' masuk ke GoDigital ✓');
+});
+function sweepAll(){
+  const c=centralAcc();if(!c)return;
+  let count=0;
+  state.accounts.filter(a=>!a.isCentral).forEach(a=>{
+    const bal=balanceOf(a.id);
+    if(bal>0){state.transactions.push({id:uid(),ts:Date.now(),type:'transfer',amount:bal,from:a.id,to:c.id,date:todayISO(),note:'Setoran saldo '+a.name});count++;}
+  });
+  if(count){renderAll();persist();toast(count+' akun disetor ke GoDigital ✓');}
+  else toast('Tidak ada saldo akun untuk disetor','warn');
+}
+function verifyEntries(entries){
+  const pics=[...new Set(entries.map(e=>e.pic))].join(' & ');
+  const total=entries.reduce((s,e)=>s+e.amount,0);
+  openConfirm({
+    title:'Verifikasi Pengajuan',
+    body:`Konfirmasi bahwa PIC (${pics}) sudah membayarkan ${fmt(total)} ke talent. Jumlah ini tercatat sebagai hutang perusahaan ke PIC.`,
+    ok:'✓ Verifikasi',okClass:'btn-green',
+    cb:()=>{entries.forEach(e=>{e.status='paid_pic';e.verifiedAt=Date.now();});renderAll();persist();toast('Diverifikasi — hutang ke '+pics+' tercatat');}
+  });
+}
 let reimbPayload=null;
-function openReimbModal(entries){reimbPayload={entries};const total=entries.reduce((s,e)=>s+e.amount,0);accOptionsPay('rAcc');const payBal=balanceOf($('#rAcc').value);const diff=Math.max(0,total-payBal);$('#reimbList').innerHTML=entries.map(e=>`<div class="m-row"><span><b style="color:var(--ink)">${esc(e.talentName)}</b> · ${e.hours} jam · <span class="badge pic" style="font-size:9px">${esc(e.pic)}</span></span><b>${fmt(e.amount)}</b></div>`).join('');$('#rTotal').textContent=fmt(total);$('#rKas').textContent=fmt(payBal);$('#rNombokRow').style.display=diff>0?'flex':'none';$('#rNombok').textContent=fmt(diff);openModal('modal-reimb');}
+function openReimbModal(entries){
+  reimbPayload={entries};
+  const total=entries.reduce((s,e)=>s+e.amount,0);
+  accOptionsPay('rAcc');
+  const payBal=balanceOf($('#rAcc').value);
+  const diff=Math.max(0,total-payBal);
+  $('#reimbList').innerHTML=entries.map(e=>`<div class="m-row"><span><b style="color:var(--ink)">${esc(e.talentName)}</b> · ${e.hours} jam · <span class="badge pic" style="font-size:9px">${esc(e.pic)}</span></span><b>${fmt(e.amount)}</b></div>`).join('');
+  $('#rTotal').textContent=fmt(total);
+  $('#rKas').textContent=fmt(payBal);
+  $('#rNombokRow').style.display=diff>0?'flex':'none';
+  $('#rNombok').textContent=fmt(diff);
+  openModal('modal-reimb');
+}
 $('#rAcc').addEventListener('change',()=>{if(reimbPayload)openReimbModal(reimbPayload.entries);});
-$('#rOk').addEventListener('click',()=>{if(!reimbPayload)return;const acc=$('#rAcc').value;if(acc==='__new')return toast('Pilih akun yang ada','warn');const {entries}=reimbPayload;const total=entries.reduce((s,e)=>s+e.amount,0);const pics=[...new Set(entries.map(e=>e.pic))].join(' & ');const diff=Math.max(0,total-balanceOf(acc));if(diff>0)addTx({type:'in',cat:'Suntik Dana',amount:diff,acc,date:todayISO(),note:'Nombok reimburse '+pics});entries.forEach(e=>{addTx({type:'out',cat:'Gaji Talent',amount:e.amount,acc,date:todayISO(),note:reimbNote(e)});e.status='closed';e.paidAt=Date.now();});renderAll();persist();closeModal();toast('Hutang ke '+pics+' dibayar ✓'+(diff>0?' · nombok '+fmt(diff):''));reimbPayload=null;});
-function openOpsModal(cat){ui.opsCat=cat;$('#omTitle').textContent='Bayar '+cat;$('#omAmount').value=(state.ops[cat.toLowerCase()]||0).toLocaleString('id-ID');accOptionsPay('omAcc');openModal('modal-ops');}
-$('#omOk').addEventListener('click',()=>{const amount=parseInt($('#omAmount').value.replace(/\./g,''),10)||0;if(amount<=0)return toast('Jumlah tidak valid','warn');const acc=$('#omAcc').value;if(acc==='__new')return toast('Pilih akun yang ada','warn');state.ops[ui.opsCat.toLowerCase()]=amount;addTx({type:'out',cat:ui.opsCat,amount,acc,date:todayISO(),note:ui.opsCat+' — '+monthLabel(todayISO().slice(0,7))});closeModal();toast(ui.opsCat+' dibayar ✓');});
+$('#rOk').addEventListener('click',()=>{
+  if(!reimbPayload)return;
+  const acc=$('#rAcc').value;
+  if(acc==='__new')return toast('Pilih akun yang ada','warn');
+  const entries=reimbPayload.entries;
+  const total=entries.reduce((s,e)=>s+e.amount,0);
+  const pics=[...new Set(entries.map(e=>e.pic))].join(' & ');
+  const diff=Math.max(0,total-balanceOf(acc));
+  if(diff>0)addTx({type:'in',cat:'Suntik Dana',amount:diff,acc,date:todayISO(),note:'Nombok reimburse '+pics});
+  entries.forEach(e=>{
+    addTx({type:'out',cat:'Gaji Talent',amount:e.amount,acc,date:todayISO(),note:reimbNote(e)});
+    e.status='closed';e.paidAt=Date.now();
+  });
+  renderAll();persist();closeModal();
+  toast('Hutang ke '+pics+' dibayar ✓'+(diff>0?' · nombok '+fmt(diff):''));
+  reimbPayload=null;
+});
+function openOpsModal(cat){
+  ui.opsCat=cat;$('#omTitle').textContent='Bayar '+cat;
+  $('#omAmount').value=(state.ops[cat.toLowerCase()]||0).toLocaleString('id-ID');
+  accOptionsPay('omAcc');openModal('modal-ops');
+}
+$('#omOk').addEventListener('click',()=>{
+  const amount=parseInt($('#omAmount').value.replace(/\./g,''),10)||0;
+  if(amount<=0)return toast('Jumlah tidak valid','warn');
+  const acc=$('#omAcc').value;
+  if(acc==='__new')return toast('Pilih akun yang ada','warn');
+  state.ops[ui.opsCat.toLowerCase()]=amount;
+  addTx({type:'out',cat:ui.opsCat,amount,acc,date:todayISO(),note:ui.opsCat+' — '+monthLabel(todayISO().slice(0,7))});
+  closeModal();toast(ui.opsCat+' dibayar ✓');
+});
 const TITLES={dashboard:'Dashboard',transaksi:'Arus Kas',akun:'Akun',gaji:'Gaji & Operasional'};
-function goView(v){$$('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.view===v));$$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));$('#viewTitle').textContent=TITLES[v];window.scrollTo({top:0,behavior:'smooth'});}
+function goView(v){
+  $$('.nav a').forEach(a=>a.classList.toggle('active',a.dataset.view===v));
+  $$('.view').forEach(s=>s.classList.toggle('active',s.id==='view-'+v));
+  $('#viewTitle').textContent=TITLES[v];window.scrollTo({top:0,behavior:'smooth'});
+}
 window.goView=goView;
 $$('.nav a').forEach(a=>a.addEventListener('click',()=>goView(a.dataset.view)));
 $('#btnQuickAdd').addEventListener('click',()=>{goView('transaksi');setTimeout(()=>$('#txAmount').focus(),350);});
 $('#segIn').addEventListener('click',()=>setTxType('in'));
 $('#segOut').addEventListener('click',()=>setTxType('out'));
 $('#txAccount').addEventListener('change',e=>{if(e.target.value==='__new')openAccModal(id=>{accOptions('txAccount');$('#txAccount').value=id;});});
-$('#txForm').addEventListener('submit',e=>{e.preventDefault();const acc=$('#txAccount').value;if(acc==='__new'){openAccModal(id=>{accOptions('txAccount');$('#txAccount').value=id;});return;}if(!acc)return toast('Tambahkan akun dulu','warn');const amount=parseInt($('#txAmount').value.replace(/\./g,''),10)||0;if(amount<=0)return toast('Jumlah harus diisi','warn');addTx({type:ui.txType,cat:$('#txCat').value,amount,acc,date:$('#txDate').value||todayISO(),note:$('#txNote').value.trim()});$('#txAmount').value='';$('#txNote').value='';toast(ui.txType==='in'?'Pemasukan ✓':'Pengeluaran ✓',ui.txType==='in'?'ok':'warn');});
+$('#txForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const acc=$('#txAccount').value;
+  if(acc==='__new'){openAccModal(id=>{accOptions('txAccount');$('#txAccount').value=id;});return;}
+  if(!acc)return toast('Tambahkan akun dulu','warn');
+  const amount=parseInt($('#txAmount').value.replace(/\./g,''),10)||0;
+  if(amount<=0)return toast('Jumlah harus diisi','warn');
+  addTx({type:ui.txType,cat:$('#txCat').value,amount,acc,date:$('#txDate').value||todayISO(),note:$('#txNote').value.trim()});
+  $('#txAmount').value='';$('#txNote').value='';
+  toast(ui.txType==='in'?'Pemasukan ✓':'Pengeluaran ✓',ui.txType==='in'?'ok':'warn');
+});
 $$('.chip-f[data-f]').forEach(c=>c.addEventListener('click',()=>{ui.filter=c.dataset.f;$$('.chip-f[data-f]').forEach(x=>x.classList.toggle('active',x===c));renderTxTable();}));
 $$('.chip-f[data-gf]').forEach(c=>c.addEventListener('click',()=>{ui.gajiFilter=c.dataset.gf;$$('.chip-f[data-gf]').forEach(x=>x.classList.toggle('active',x===c));renderGajiTable();}));
-$('#btnCsv').addEventListener('click',()=>{const rows=[...state.transactions].filter(t=>ui.filter==='all'||t.type===ui.filter).sort((a,b)=>a.date.localeCompare(b.date));let csv='\ufeffTanggal,Tipe,Kategori,Akun,Catatan,Jumlah\n';rows.forEach(t=>{const i=txRowInfo(t);csv+=[t.date,t.type==='in'?'Masuk':(t.type==='out'?'Keluar':'Transfer'),i.cat,'"'+i.accName.replace(/"/g,'""')+'"','"'+(t.note||'').replace(/"/g,'""')+'"',t.amount].join(',')+'\n';});const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));a.download='go-digital-cashflow.csv';a.click();toast('CSV diunduh ✓');});
-$('#txBody').addEventListener('click',e=>{const b=e.target.closest('[data-del]');if(!b)return;openConfirm({title:'Hapus transaksi?',body:'Saldo akan dihitung ulang.',ok:'Hapus',cb:()=>{state.transactions=state.transactions.filter(t=>t.id!==b.dataset.del);renderAll();persist();toast('Dihapus');}});});
-$('#accForm').addEventListener('submit',e=>{e.preventDefault();const name=$('#acName').value.trim();if(!name)return;state.accounts.push({id:uid(),name,opening:parseInt($('#acOpening').value.replace(/\./g,''),10)||0});renderAll();persist();e.target.reset();toast('Akun ditambahkan ✓');});
-$('#accGrid').addEventListener('click',e=>{const setor=e.target.closest('[data-setor]');const sweep=e.target.closest('[data-sweep]');const del=e.target.closest('[data-delacc]');if(setor)openTransferModal(setor.dataset.setor);else if(sweep)sweepAll();else if(del){const a=accById(del.dataset.delacc);if(a.isCentral)return toast('Akun pusat tidak dapat dihapus','err');const n=state.transactions.filter(t=>t.acc===a.id||t.from===a.id||t.to===a.id).length;openConfirm({title:'Hapus akun "'+a.name+'"?',body:n?n+' transaksi terkait ikut terhapus.':'Akun akan dihapus.',ok:'Hapus',cb:()=>{state.accounts=state.accounts.filter(x=>x.id!==a.id);state.transactions=state.transactions.filter(t=>t.acc!==a.id&&t.from!==a.id&&t.to!==a.id);renderAll();persist();toast('Akun dihapus');}});}});
-$('#talentForm').addEventListener('submit',e=>{e.preventDefault();const name=$('#tlName').value.trim(),rate=parseInt($('#tlRate').value.replace(/\./g,''),10)||DEFAULT_RATE;if(!name)return toast('Nama wajib diisi','warn');state.talents.push({id:uid(),name,hourlyRate:rate});renderAll();persist();e.target.reset();$('#tlRate').value=DEFAULT_RATE.toLocaleString('id-ID');toast('Talent "'+name+'" ditambahkan ✓');});
-$('#talentGrid').addEventListener('click',e=>{const del=e.target.closest('[data-delt]');if(!del)return;const t=talentById(del.dataset.delt);openConfirm({title:'Hapus "'+t.name+'"?',body:'Pengajuan terkait juga akan dihapus.',ok:'Hapus',cb:()=>{state.talents=state.talents.filter(x=>x.id!==t.id);state.gajiEntries=state.gajiEntries.filter(x=>x.talentId!==t.id);renderAll();persist();toast('Talent dihapus');}});});
-['gjTalent','gjStart','gjEnd','gjHours','gjPic'].forEach(id=>{document.getElementById(id).addEventListener('input',updateGajiPreview);document.getElementById(id).addEventListener('change',updateGajiPreview);});
-$('#gajiForm').addEventListener('submit',e=>{e.preventDefault();const t=talentById($('#gjTalent').value);if(!t)return toast('Pilih talent','warn');const s=$('#gjStart').value,ed=$('#gjEnd').value,h=parseFloat($('#gjHours').value)||0,pic=$('#gjPic').value;if(!s||!ed)return toast('Lengkapi periode','warn');if(s>ed)return toast('Periode tidak valid','warn');if(h<=0)return toast('Jam kerja harus diisi','warn');const rate=t.hourlyRate||DEFAULT_RATE,amount=Math.round(h*rate);state.gajiEntries.push({id:uid(),talentId:t.id,talentName:t.name,startDate:s,endDate:ed,hours:h,rate,amount,pic,status:'open',createdAt:Date.now()});renderAll();persist();$('#gjHours').value='';$('#gjPreview').classList.remove('show');toast('Pengajuan '+t.name+' ('+h+' jam · PIC '+pic+') dibuat ✓');});
-$('#gajiBody').addEventListener('click',e=>{const v=e.target.closest('[data-verify-gj]');const r=e.target.closest('[data-reimb-gj]');const u=e.target.closest('[data-undo-gj]');const d=e.target.closest('[data-del-gj]');const find=x=>state.gajiEntries.find(g=>g.id===x);if(v){const en=find(v.dataset.verifyGj);if(en)verifyEntries([en]);}else if(r){const en=find(r.dataset.reimbGj);if(en)openReimbModal([en]);}else if(u){const en=find(u.dataset.undoGj);if(en)openConfirm({title:'Kembalikan ke Draft?',body:'Status pengajuan kembali menjadi Draft Aktif.',ok:'Kembalikan',okClass:'btn-copper',cb:()=>{en.status='open';delete en.verifiedAt;renderAll();persist();toast('Dikembalikan ke draft');}});}else if(d){const en=find(d.dataset.delGj);if(!en)return;openConfirm({title:'Hapus pengajuan '+en.talentName+'?',body:en.status==='closed'?'Transaksi reimburse terkait juga dihapus.':'Pengajuan dihapus permanen.',ok:'Hapus',cb:()=>{if(en.status==='closed'){const n=reimbNote(en);state.transactions=state.transactions.filter(t=>!(t.type==='out'&&t.cat==='Gaji Talent'&&t.note===n));}state.gajiEntries=state.gajiEntries.filter(x=>x.id!==en.id);renderAll();persist();toast('Pengajuan dihapus');}});}}});
+$('#btnCsv').addEventListener('click',()=>{
+  const rows=[...state.transactions].filter(t=>ui.filter==='all'||t.type===ui.filter).sort((a,b)=>a.date.localeCompare(b.date));
+  let csv='\ufeffTanggal,Tipe,Kategori,Akun,Catatan,Jumlah\n';
+  rows.forEach(t=>{const i=txRowInfo(t);csv+=[t.date,t.type==='in'?'Masuk':(t.type==='out'?'Keluar':'Transfer'),i.cat,'"'+i.accName.replace(/"/g,'""')+'"','"'+(t.note||'').replace(/"/g,'""')+'"',t.amount].join(',')+'\n';});
+  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'}));
+  a.download='go-digital-cashflow.csv';a.click();toast('CSV diunduh ✓');
+});
+$('#txBody').addEventListener('click',e=>{
+  const b=e.target.closest('[data-del]');
+  if(!b)return;
+  openConfirm({title:'Hapus transaksi?',body:'Saldo akan dihitung ulang.',ok:'Hapus',cb:()=>{
+    state.transactions=state.transactions.filter(t=>t.id!==b.dataset.del);
+    renderAll();persist();toast('Dihapus');
+  }});
+});
+$('#accForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const name=$('#acName').value.trim();if(!name)return;
+  state.accounts.push({id:uid(),name,opening:parseInt($('#acOpening').value.replace(/\./g,''),10)||0});
+  renderAll();persist();e.target.reset();toast('Akun ditambahkan ✓');
+});
+$('#accGrid').addEventListener('click',e=>{
+  const setor=e.target.closest('[data-setor]');
+  const sweep=e.target.closest('[data-sweep]');
+  const del=e.target.closest('[data-delacc]');
+  if(setor){openTransferModal(setor.dataset.setor);return;}
+  if(sweep){sweepAll();return;}
+  if(del){
+    const a=accById(del.dataset.delacc);
+    if(a.isCentral){toast('Akun pusat tidak dapat dihapus','err');return;}
+    const n=state.transactions.filter(t=>t.acc===a.id||t.from===a.id||t.to===a.id).length;
+    openConfirm({title:'Hapus akun "'+a.name+'"?',body:n?n+' transaksi terkait ikut terhapus.':'Akun akan dihapus.',ok:'Hapus',cb:()=>{
+      state.accounts=state.accounts.filter(x=>x.id!==a.id);
+      state.transactions=state.transactions.filter(t=>t.acc!==a.id&&t.from!==a.id&&t.to!==a.id);
+      renderAll();persist();toast('Akun dihapus');
+    }});
+  }
+});
+$('#talentForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const name=$('#tlName').value.trim(),rate=parseInt($('#tlRate').value.replace(/\./g,''),10)||DEFAULT_RATE;
+  if(!name)return toast('Nama wajib diisi','warn');
+  state.talents.push({id:uid(),name,hourlyRate:rate});
+  renderAll();persist();e.target.reset();$('#tlRate').value=DEFAULT_RATE.toLocaleString('id-ID');
+  toast('Talent "'+name+'" ditambahkan ✓');
+});
+$('#talentGrid').addEventListener('click',e=>{
+  const del=e.target.closest('[data-delt]');
+  if(!del)return;
+  const t=talentById(del.dataset.delt);
+   openConfirm({title:'Hapus "'+t.name+'"?',body:'Pengajuan terkait juga akan dihapus.',ok:'Hapus',cb:()=>{
+    state.talents=state.talents.filter(x=>x.id!==t.id);
+    state.gajiEntries=state.gajiEntries.filter(x=>x.talentId!==t.id);
+    renderAll();persist();toast('Talent dihapus');
+  }});
+});
+
+['gjTalent','gjStart','gjEnd','gjHours','gjPic'].forEach(id=>{
+  document.getElementById(id).addEventListener('input',updateGajiPreview);
+  document.getElementById(id).addEventListener('change',updateGajiPreview);
+});
+$('#gajiForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const t=talentById($('#gjTalent').value);
+  if(!t)return toast('Pilih talent','warn');
+  const s=$('#gjStart').value,ed=$('#gjEnd').value,h=parseFloat($('#gjHours').value)||0,pic=$('#gjPic').value;
+  if(!s||!ed)return toast('Lengkapi periode','warn');
+  if(s>ed)return toast('Periode tidak valid','warn');
+  if(h<=0)return toast('Jam kerja harus diisi','warn');
+  const rate=t.hourlyRate||DEFAULT_RATE,amount=Math.round(h*rate);
+  state.gajiEntries.push({id:uid(),talentId:t.id,talentName:t.name,startDate:s,endDate:ed,hours:h,rate,amount,pic,status:'open',createdAt:Date.now()});
+  renderAll();persist();
+  $('#gjHours').value='';$('#gjPreview').classList.remove('show');
+  toast('Pengajuan '+t.name+' ('+h+' jam · PIC '+pic+') dibuat ✓');
+});
+$('#gajiBody').addEventListener('click',e=>{
+  const v=e.target.closest('[data-verify-gj]');
+  const r=e.target.closest('[data-reimb-gj]');
+  const u=e.target.closest('[data-undo-gj]');
+  const d=e.target.closest('[data-del-gj]');
+  const find=x=>state.gajiEntries.find(g=>g.id===x);
+  if(v){const en=find(v.dataset.verifyGj);if(en)verifyEntries([en]);}
+  else if(r){const en=find(r.dataset.reimbGj);if(en)openReimbModal([en]);}
+  else if(u){const en=find(u.dataset.undoGj);if(en)openConfirm({title:'Kembalikan ke Draft?',body:'Status pengajuan kembali menjadi Draft Aktif.',ok:'Kembalikan',okClass:'btn-copper',cb:()=>{en.status='open';delete en.verifiedAt;renderAll();persist();toast('Dikembalikan ke draft');}});}
+  else if(d){const en=find(d.dataset.delGj);if(!en)return;openConfirm({title:'Hapus pengajuan '+en.talentName+'?',body:en.status==='closed'?'Transaksi reimburse terkait juga dihapus.':'Pengajuan dihapus permanen.',ok:'Hapus',cb:()=>{if(en.status==='closed'){const n=reimbNote(en);state.transactions=state.transactions.filter(t=>!(t.type==='out'&&t.cat==='Gaji Talent'&&t.note===n));}state.gajiEntries=state.gajiEntries.filter(x=>x.id!==en.id);renderAll();persist();toast('Pengajuan dihapus');}});}
+});
 $('#btnBulkVerify').addEventListener('click',()=>{const o=openEntries();if(o.length)verifyEntries(o);});
 $('#btnBulkReimb').addEventListener('click',()=>{const p=paidPicEntries();if(p.length)openReimbModal(p);});
 $$('[data-ops]').forEach(b=>b.addEventListener('click',()=>openOpsModal(b.dataset.ops)));
 $('#opsListrikAmt').addEventListener('change',e=>{const v=parseInt(e.target.value.replace(/\./g,''),10);if(v>0){state.ops.listrik=v;persist();}});
 $('#opsInternetAmt').addEventListener('change',e=>{const v=parseInt(e.target.value.replace(/\./g,''),10);if(v>0){state.ops.internet=v;persist();}});
-$$('input[data-money]').forEach(inp=>inp.addEventListener('input',()=>{const v=inp.value.replace(/\D/g,'');inp.value=v?parseInt(v,10).toLocaleString('id-ID'):'';}));
+$$('input[data-money]').forEach(inp=>inp.addEventListener('input',()=>{
+  const v=inp.value.replace(/\D/g,'');inp.value=v?parseInt(v,10).toLocaleString('id-ID'):'';
+}));
 
-function authMsg(code){const map={'auth/invalid-credential':'Email atau password salah. Pastikan sudah daftar dulu.','auth/wrong-password':'Password salah.','auth/user-not-found':'Email belum terdaftar — klik "Belum punya akun? Daftar".','auth/email-already-in-use':'Email sudah terdaftar, silakan masuk.','auth/weak-password':'Password minimal 6 karakter.','auth/invalid-email':'Format email tidak valid.','auth/too-many-requests':'Terlalu banyak percobaan, tunggu sebentar.','auth/network-request-failed':'Koneksi internet bermasalah.','auth/operation-not-allowed':'Email/Password Auth belum diaktifkan di Firebase Console!'};return map[code]||('Error: '+code);}
+function authMsg(code){
+  const map={'auth/invalid-credential':'Email atau password salah. Pastikan sudah daftar dulu.','auth/wrong-password':'Password salah.','auth/user-not-found':'Email belum terdaftar — klik "Belum punya akun? Daftar".','auth/email-already-in-use':'Email sudah terdaftar, silakan masuk.','auth/weak-password':'Password minimal 6 karakter.','auth/invalid-email':'Format email tidak valid.','auth/too-many-requests':'Terlalu banyak percobaan, tunggu sebentar.','auth/network-request-failed':'Koneksi internet bermasalah.','auth/operation-not-allowed':'Email/Password Auth belum diaktifkan di Firebase Console!'};
+  return map[code]||('Error: '+code);
+}
 let registerMode=false;
-$('#liToggle').addEventListener('click',()=>{registerMode=!registerMode;$('#liErr').textContent='';$('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';$('#liBtn').className='btn wfull '+(registerMode?'btn-green':'btn-copper');$('#liToggle').textContent=registerMode?'✓ Sudah punya akun? Masuk':'👤 Belum punya akun? Daftar';});
-$('#loginForm').addEventListener('submit',async e=>{e.preventDefault();const em=$('#liEmail').value.trim(),pw=$('#liPass').value;$('#liErr').textContent='';$('#liBtn').disabled=true;$('#liBtn').textContent='Memproses…';try{const fa=window._fa;if(registerMode)await fa.createUserWithEmailAndPassword(auth,em,pw);else await fa.signInWithEmailAndPassword(auth,em,pw);}catch(err){console.error('[AUTH]',err.code);$('#liErr').textContent=authMsg(err.code);if(err.code==='auth/user-not-found'&&!registerMode){registerMode=true;$('#liBtn').textContent='🚀 Daftar Akun Baru';$('#liBtn').className='btn wfull btn-green';$('#liToggle').textContent='✓ Sudah punya akun? Masuk';$('#liErr').textContent+=' — mode daftar otomatis aktif, klik lagi.';}}finally{$('#liBtn').disabled=false;$('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';}});
+$('#liToggle').addEventListener('click',()=>{
+  registerMode=!registerMode;$('#liErr').textContent='';
+  $('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';
+  $('#liBtn').className='btn wfull '+(registerMode?'btn-green':'btn-copper');
+  $('#liToggle').textContent=registerMode?'✓ Sudah punya akun? Masuk':'👤 Belum punya akun? Daftar';
+});
+$('#loginForm').addEventListener('submit',async e=>{
+  e.preventDefault();
+  const em=$('#liEmail').value.trim(),pw=$('#liPass').value;
+  $('#liErr').textContent='';$('#liBtn').disabled=true;$('#liBtn').textContent='Memproses…';
+  try{
+    const fa=window._fa;
+    if(registerMode)await fa.createUserWithEmailAndPassword(auth,em,pw);
+    else await fa.signInWithEmailAndPassword(auth,em,pw);
+  }catch(err){
+    console.error('[AUTH]',err.code);
+    $('#liErr').textContent=authMsg(err.code);
+    if(err.code==='auth/user-not-found'&&!registerMode){registerMode=true;$('#liBtn').textContent='🚀 Daftar Akun Baru';$('#liBtn').className='btn wfull btn-green';$('#liToggle').textContent='✓ Sudah punya akun? Masuk';$('#liErr').textContent+=' — mode daftar otomatis aktif, klik lagi.';}
+  }finally{
+    $('#liBtn').disabled=false;
+    $('#liBtn').textContent=registerMode?'🚀 Daftar Akun Baru':'Masuk';
+  }
+});
 $('#btnLogout').addEventListener('click',()=>window._fa.signOut(auth));
 
-function setDefaultDates(){const today=new Date();const d1=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?1:16);const d2=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?15:new Date(today.getFullYear(),today.getMonth()+1,0).getDate());$('#gjStart').value=isoOf(d1);$('#gjEnd').value=isoOf(d2);$('#txDate').value=todayISO();}
-window._fa.onAuthStateChanged(auth,u=>{if(u){fbUser=u;$('#loginScreen').hidden=true;$('#appShell').hidden=false;$('#userEmail').textContent=u.email;$('#userBox').hidden=false;initCloud(u.uid);}else{fbUser=null;state=null;if(unsub){unsub();unsub=null;}$('#appShell').hidden=true;$('#loginScreen').hidden=false;}});
+function setDefaultDates(){
+  const today=new Date();
+  const d1=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?1:16);
+  const d2=new Date(today.getFullYear(),today.getMonth(),today.getDate()<16?15:new Date(today.getFullYear(),today.getMonth()+1,0).getDate());
+  $('#gjStart').value=isoOf(d1);$('#gjEnd').value=isoOf(d2);$('#txDate').value=todayISO();
+}
+window._fa.onAuthStateChanged(auth,u=>{
+  if(u){
+    fbUser=u;
+    $('#loginScreen').hidden=true;$('#appShell').hidden=false;
+    $('#userEmail').textContent=u.email;$('#userBox').hidden=false;
+    initCloud(u.uid);
+  }else{
+    fbUser=null;state=null;
+    if(unsub){unsub();unsub=null;}
+    $('#appShell').hidden=true;$('#loginScreen').hidden=false;
+  }
+});
 setDefaultDates();
 $('#footDate').textContent='© 2026 Go Digital';
 setTxType('in');
