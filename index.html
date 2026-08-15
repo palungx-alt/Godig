@@ -214,6 +214,14 @@ tbody tr:last-child td{border-bottom:none}
 </style>
 </head>
 <body>
+  <script>
+window.addEventListener('error',function(e){
+  var d=document.createElement('pre');
+  d.style.cssText='position:fixed;top:0;left:0;right:0;background:#ffe5e5;color:#900;padding:12px;z-index:99999;white-space:pre-wrap;font-size:12px;border-bottom:2px solid #900';
+  d.textContent='ERROR: '+e.message+' (baris '+e.lineno+')';
+  document.body.appendChild(d);
+},true);
+</script>
 <div class="bg-fx"><div class="grid"></div><div class="glow g1"></div><div class="glow g2"></div></div>
 
 <div class="login-wrap" id="loginScreen" hidden>
