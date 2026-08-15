@@ -436,12 +436,12 @@ function ensureCentral(){
 }
 function persist(){
   if(fbMode()){
-    window._fs.setDoc(window._fs.doc(db,'godigital','main','data'), state).catch(e=>toast('Gagal menyimpan: '+e.message,'err'));
+    window._fs.setDoc(window._fs.doc(db,'godigital','data'), state).catch(e=>toast('Gagal menyimpan: '+e.message,'err'));
   }
 }
 async function initCloud(uidStr){
   const fs=window._fs;
-  const sharedRef=fs.doc(db,'godigital','main','data');
+  const sharedRef=fs.doc(db,'godigital','data');
   try{
     const snap=await fs.getDoc(sharedRef);
     const shared=snap.exists()?snap.data():null;
